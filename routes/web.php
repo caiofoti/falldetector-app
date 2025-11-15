@@ -15,7 +15,9 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard - Main entry point after login
     Route::get('dashboard', [MonitoringSessionController::class, 'index'])->name('dashboard');
-
+    Route::get('/camera/{session}/stream', [CameraStreamController::class, 'stream'])
+        ->name('camera.stream')
+        ->middleware('auth');
     // Monitoring Sessions
     Route::prefix('monitoring')->name('monitoring.')->group(function () {
         Route::get('/create', [MonitoringSessionController::class, 'create'])->name('create');

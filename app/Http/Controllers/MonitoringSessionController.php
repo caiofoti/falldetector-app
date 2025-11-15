@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\MonitoringSession;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class MonitoringSessionController extends Controller
 {
+    use AuthorizesRequests;
     public function index()
     {
         $sessions = auth()->user()->monitoringSessions()
