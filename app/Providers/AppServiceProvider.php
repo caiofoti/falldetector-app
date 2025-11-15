@@ -3,6 +3,11 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\FallAlert;
+use App\Models\MonitoringSession;
+use App\Policies\FallAlertPolicy;
+use App\Policies\MonitoringSessionPolicy;
+use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Gate::policy(MonitoringSession::class, MonitoringSessionPolicy::class);
+        Gate::policy(FallAlert::class, FallAlertPolicy::class);
     }
 }

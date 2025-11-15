@@ -3,11 +3,11 @@
 return [
     'name' => 'LaravelPWA',
     'manifest' => [
-        'name' => env('APP_NAME', 'My PWA App'),
-        'short_name' => 'PWA',
+        'name' => 'FallDetector',
+        'short_name' => 'FallDetector',
         'start_url' => '/',
         'background_color' => '#ffffff',
-        'theme_color' => '#000000',
+        'theme_color' => '#ea580c',
         'display' => 'standalone',
         'orientation'=> 'any',
         'status_bar'=> 'black',
@@ -69,7 +69,7 @@ return [
             ],
             [
                 'name' => 'Shortcut Link 2',
-                'description' => 'Shortcut Link 2 Description',
+                'description' => 'AI-Powered Fall Detection System',
                 'url' => '/shortcutlink2'
             ]
         ],
