@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MonitoringSession;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CameraStreamController extends Controller
 {
@@ -11,14 +12,32 @@ class CameraStreamController extends Controller
     {
         $this->authorize('view', $session);
 
-        // Aqui você processaria o feed com Python/OpenCV e enviaria frames
-        // Por enquanto, redirecione para o URL direto da câmera
-        return response()->stream(function () use ($session) {
-            // Implementar lógica de streaming real aqui
-            // Ex: ler frames do Python e enviar
+        return new StreamedResponse(function () use ($session) {
+            // Headers para streaming de vídeo
+            header('Content-Type: multipart/x-mixed-replace; boundary=frame');
+
+            // Simular stream (em produção, isso seria do Python/OpenCV)
+            while (true) {
+                // Aqui você integraria com o microserviço Python
+                // Por enquanto, apenas mantém a conexão aberta
+                echo "--frame\r\n";
+                echo "Content-Type: image/jpeg\r\n\r\n";
+
+                // Em produção, pegaria frame do Python aqui
+                // echo $frameData;
+
+                echo "\r\n";
+
+                if (connection_aborted()) {
+                    break;
+                }
+
+                usleep(33333); // ~30 FPS
+            }
         }, 200, [
-            'Content-Type' => 'multipart/x-mixed-replace; boundary=frame',
-            'Cache-Control' => 'no-cache',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
         ]);
     }
 }

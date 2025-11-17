@@ -1,6 +1,5 @@
 import { update } from '@/routes/password';
 import { Form, Head } from '@inertiajs/react';
-
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,10 +15,10 @@ interface ResetPasswordProps {
 export default function ResetPassword({ token, email }: ResetPasswordProps) {
     return (
         <AuthLayout
-            title="Reset password"
-            description="Please enter your new password below"
+            title="Redefinir senha"
+            description="Digite sua nova senha abaixo"
         >
-            <Head title="Reset password" />
+            <Head title="Redefinir senha" />
 
             <Form
                 {...update.form()}
@@ -39,14 +38,11 @@ export default function ResetPassword({ token, email }: ResetPasswordProps) {
                                 className="mt-1 block w-full"
                                 readOnly
                             />
-                            <InputError
-                                message={errors.email}
-                                className="mt-2"
-                            />
+                            <InputError message={errors.email} className="mt-2" />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="password">Password</Label>
+                            <Label htmlFor="password">Nova Senha</Label>
                             <Input
                                 id="password"
                                 type="password"
@@ -54,37 +50,27 @@ export default function ResetPassword({ token, email }: ResetPasswordProps) {
                                 autoComplete="new-password"
                                 className="mt-1 block w-full"
                                 autoFocus
-                                placeholder="Password"
+                                placeholder="Nova senha"
                             />
                             <InputError message={errors.password} />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="password_confirmation">
-                                Confirm password
-                            </Label>
+                            <Label htmlFor="password_confirmation">Confirmar Senha</Label>
                             <Input
                                 id="password_confirmation"
                                 type="password"
                                 name="password_confirmation"
                                 autoComplete="new-password"
                                 className="mt-1 block w-full"
-                                placeholder="Confirm password"
+                                placeholder="Confirme a senha"
                             />
-                            <InputError
-                                message={errors.password_confirmation}
-                                className="mt-2"
-                            />
+                            <InputError message={errors.password_confirmation} className="mt-2" />
                         </div>
 
-                        <Button
-                            type="submit"
-                            className="mt-4 w-full"
-                            disabled={processing}
-                            data-test="reset-password-button"
-                        >
+                        <Button type="submit" className="mt-4 w-full" disabled={processing}>
                             {processing && <Spinner />}
-                            Reset password
+                            Redefinir Senha
                         </Button>
                     </div>
                 )}

@@ -1,7 +1,15 @@
 import { Head, Link } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
-import AppLogoIcon from '@/components/app-logo-icon';
-import { Shield, Bell, Video, AlertTriangle } from 'lucide-react';
+import { Shield, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 
 interface WelcomeProps {
     canRegister: boolean;
@@ -10,110 +18,186 @@ interface WelcomeProps {
 export default function Welcome({ canRegister }: WelcomeProps) {
     return (
         <>
-            <Head title="Welcome" />
+            <Head title="Bem-vindo" />
 
-            <div className="min-h-screen bg-gradient-to-b from-orange-50 to-white dark:from-gray-900 dark:to-gray-950">
-                {/* Header */}
+            <div className="min-h-screen bg-gradient-to-b from-[#FBEEF0] to-white dark:from-gray-900 dark:to-gray-950">
                 <header className="container mx-auto px-4 py-6">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-600 text-white">
-                                <AppLogoIcon className="h-6 w-6 fill-current" />
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#979B80] transition-transform hover:scale-110">
+                                <Shield className="h-6 w-6 text-white" />
                             </div>
-                            <span className="text-xl font-bold">FallDetector</span>
+                            <span className="text-xl font-bold">
+                                FallDetector
+                            </span>
                         </div>
                         <div className="flex gap-3">
+                            <Dialog>
+                                <DialogTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        className="transition-colors hover:bg-[#BAD4D0]/20"
+                                    >
+                                        Sobre
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-2xl">
+                                    <DialogHeader>
+                                        <DialogTitle className="text-2xl">
+                                            Sobre o FallDetector
+                                        </DialogTitle>
+                                        <DialogDescription className="space-y-4 pt-4 text-base">
+                                            <div className="flex items-center justify-center pb-4">
+                                                <img
+                                                    src="/images/ufcspa-logo.png"
+                                                    alt="UFCSPA"
+                                                    className="h-20 object-contain"
+                                                />
+                                            </div>
+
+                                            <p className="text-foreground">
+                                                <strong>FallDetector</strong> é
+                                                um sistema inteligente de
+                                                detecção de quedas desenvolvido
+                                                para proteger idosos através de
+                                                monitoramento contínuo por vídeo
+                                                com inteligência artificial.
+                                            </p>
+
+                                            <div className="space-y-2">
+                                                <h4 className="font-semibold text-foreground">
+                                                    Como funciona:
+                                                </h4>
+                                                <ul className="list-inside list-disc space-y-1 text-sm">
+                                                    <li>
+                                                        Monitoramento em tempo
+                                                        real via câmera (webcam,
+                                                        IP ou RTSP)
+                                                    </li>
+                                                    <li>
+                                                        Detecção automática de
+                                                        quedas por IA
+                                                    </li>
+                                                    <li>
+                                                        Alertas instantâneos com
+                                                        notificações push
+                                                    </li>
+                                                    <li>
+                                                        Histórico completo de
+                                                        eventos
+                                                    </li>
+                                                    <li>
+                                                        Privacidade garantida
+                                                        com processamento local
+                                                    </li>
+                                                </ul>
+                                            </div>
+
+                                            <div className="space-y-2 border-t pt-4">
+                                                <h4 className="font-semibold text-foreground">
+                                                    Projeto Acadêmico
+                                                </h4>
+                                                <p className="text-sm">
+                                                    <strong>
+                                                        Universidade Federal de
+                                                        Ciências da Saúde de
+                                                        Porto Alegre (UFCSPA)
+                                                    </strong>
+                                                </p>
+                                                <p className="text-sm">
+                                                    Disciplina: Interface
+                                                    Homem-Máquina
+                                                </p>
+                                                <p className="text-sm">
+                                                    Desenvolvido por:{' '}
+                                                    <strong>
+                                                        Caio Foti Pontes
+                                                    </strong>{' '}
+                                                    e{' '}
+                                                    <strong>
+                                                        Victor Octavio Rodrigues
+                                                        Alves
+                                                    </strong>
+                                                </p>
+                                            </div>
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                </DialogContent>
+                            </Dialog>
+
                             <Link href="/login">
-                                <Button variant="ghost">Log in</Button>
+                                <Button
+                                    variant="ghost"
+                                    className="transition-colors hover:bg-[#BAD4D0]/20"
+                                >
+                                    Entrar
+                                </Button>
                             </Link>
                             {canRegister && (
                                 <Link href="/register">
-                                    <Button>Get Started</Button>
+                                    <Button className="transition-transform hover:scale-105">
+                                        Começar
+                                    </Button>
                                 </Link>
                             )}
                         </div>
                     </div>
                 </header>
 
-                {/* Hero Section */}
                 <main className="container mx-auto px-4 py-12 md:py-20">
-                    <div className="max-w-4xl mx-auto text-center space-y-8">
-                        <div className="space-y-4">
-                            <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
-                                Protect Your Loved Ones with{' '}
-                                <span className="text-orange-600">AI-Powered</span> Fall Detection
-                            </h1>
-                            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-                                Monitor elderly care with real-time fall detection. Get instant alerts when it matters most.
-                            </p>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            {canRegister && (
-                                <Link href="/register">
-                                    <Button size="lg" className="w-full sm:w-auto">
-                                        Start Monitoring Free
-                                    </Button>
-                                </Link>
-                            )}
-                            <Link href="/login">
-                                <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                                    Sign In
-                                </Button>
-                            </Link>
-                        </div>
-
-                        {/* Features */}
-                        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 pt-12">
-                            <div className="space-y-3 p-6 rounded-lg bg-white dark:bg-gray-800 shadow-sm">
-                                <div className="w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
-                                    <Video className="h-6 w-6 text-orange-600" />
+                    <div className="mx-auto max-w-5xl">
+                        <div className="grid items-center gap-12 lg:grid-cols-2">
+                            <div className="order-2 space-y-8 lg:order-1">
+                                <div className="space-y-4">
+                                    <h1 className="text-4xl leading-tight font-bold tracking-tight md:text-5xl lg:text-6xl">
+                                        Proteja seus entes queridos com{' '}
+                                        <span className="text-[#979B80]">
+                                            detecção inteligente
+                                        </span>{' '}
+                                        de quedas
+                                    </h1>
+                                    <p className="text-lg text-muted-foreground md:text-xl">
+                                        Monitore cuidados com idosos através de
+                                        detecção de quedas em tempo real. Receba
+                                        alertas instantâneos quando mais
+                                        importa.
+                                    </p>
                                 </div>
-                                <h3 className="font-semibold">24/7 Monitoring</h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Continuous video analysis with AI-powered fall detection
-                                </p>
+
+                                <div className="flex flex-col gap-4 sm:flex-row">
+                                    {canRegister && (
+                                        <Link href="/register">
+                                            <Button
+                                                size="lg"
+                                                className="group w-full transition-transform hover:scale-105 sm:w-auto"
+                                            >
+                                                Começar Gratuitamente
+                                                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                                            </Button>
+                                        </Link>
+                                    )}
+                                    <Link href="/login">
+                                        <Button
+                                            size="lg"
+                                            variant="outline"
+                                            className="w-full transition-colors hover:bg-[#BAD4D0]/10 sm:w-auto"
+                                        >
+                                            Acessar Conta
+                                        </Button>
+                                    </Link>
+                                </div>
                             </div>
 
-                            <div className="space-y-3 p-6 rounded-lg bg-white dark:bg-gray-800 shadow-sm">
-                                <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                                    <Bell className="h-6 w-6 text-blue-600" />
-                                </div>
-                                <h3 className="font-semibold">Instant Alerts</h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Real-time push notifications the moment a fall is detected
-                                </p>
-                            </div>
-
-                            <div className="space-y-3 p-6 rounded-lg bg-white dark:bg-gray-800 shadow-sm">
-                                <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                                    <Shield className="h-6 w-6 text-green-600" />
-                                </div>
-                                <h3 className="font-semibold">Privacy First</h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Your video data is secure and processed locally
-                                </p>
-                            </div>
-
-                            <div className="space-y-3 p-6 rounded-lg bg-white dark:bg-gray-800 shadow-sm">
-                                <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                    <AlertTriangle className="h-6 w-6 text-purple-600" />
-                                </div>
-                                <h3 className="font-semibold">Alert History</h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Complete log of all detected falls with timestamps
-                                </p>
+                            <div className="group relative">
+                                <img
+                                    src="/images/hero.jpg"
+                                    alt="FallDetector"
+                                    className="relative w-full max-w-lg transform rounded-2xl shadow-2xl transition-transform duration-500 group-hover:scale-[1.02]"
+                                />
                             </div>
                         </div>
                     </div>
                 </main>
-
-                {/* Footer */}
-                <footer className="container mx-auto px-4 py-8 mt-20 border-t">
-                    <div className="text-center text-sm text-muted-foreground">
-                        <p>&copy; {new Date().getFullYear()} FallDetector. Keeping your loved ones safe.</p>
-                    </div>
-                </footer>
             </div>
         </>
     );
