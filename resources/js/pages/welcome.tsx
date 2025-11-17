@@ -10,6 +10,8 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import AppLogoIcon from '@/components/app-logo-icon';
+import AppLogo from '@/components/app-logo';
 
 interface WelcomeProps {
     canRegister: boolean;
@@ -24,12 +26,7 @@ export default function Welcome({ canRegister }: WelcomeProps) {
                 <header className="container mx-auto px-4 py-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#979B80] transition-transform hover:scale-110">
-                                <Shield className="h-6 w-6 text-white" />
-                            </div>
-                            <span className="text-xl font-bold">
-                                FallDetector
-                            </span>
+                            <AppLogo></AppLogo>
                         </div>
                         <div className="flex gap-3">
                             <Dialog>
