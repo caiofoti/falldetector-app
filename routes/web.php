@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\MonitoringApiController;
 use App\Http\Controllers\FallAlertController;
 use App\Http\Controllers\MonitoringSessionController;
 use App\Http\Controllers\CameraStreamController;
@@ -16,8 +17,13 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [MonitoringSessionController::class, 'index'])->name('dashboard');
 
-    Route::get('/camera/{session}/stream', [CameraStreamController::class, 'stream'])
-        ->name('camera.stream');
+    // Camera streaming e controle
+    Route::prefix('camera/{session}')->name('camera.')->group(function () {
+        Route::get('/stream', [CameraStreamController::class, 'stream'])->name('stream');
+        Route::get('/status', [CameraStreamController::class, 'checkStatus'])->name('status');
+        Route::post('/start', [CameraStreamController::class, 'startMonitoring'])->name('start');
+        Route::post('/stop', [CameraStreamController::class, 'stopMonitoring'])->name('stop');
+    });
 
     Route::prefix('monitoring')->name('monitoring.')->group(function () {
         Route::get('/create', [MonitoringSessionController::class, 'create'])->name('create');
@@ -29,22 +35,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('alerts.acknowledge');
     });
 
-    // Placeholder routes para futuras implementações
-    Route::get('/sessions/history', function () {
-        return Inertia::render('sessions/history');
-    })->name('sessions.history');
+    // API routes para frontend
+    Route::prefix('api/monitoring')->group(function () {
+        Route::get('/{session}/alerts', [MonitoringApiController::class, 'getAlerts']);
+        Route::get('/{session}/stats', [MonitoringApiController::class, 'getStats']);
+    });
+});
 
-    Route::get('/notifications/history', function () {
-        return Inertia::render('notifications/history');
-    })->name('notifications.history');
+// API routes públicas para Python service
+Route::prefix('api')->group(function () {
+    // Webhook de detecção de queda
+    Route::post('/fall-detected', [CameraStreamController::class, 'handleFallDetection'])
+        ->withoutMiddleware([\App\Http\Middleware\Authenticate::class]);
 
-    Route::get('/detection/settings', function () {
-        return Inertia::render('detection/settings');
-    })->name('detection.settings');
-
-    Route::get('/pwa/settings', function () {
-        return Inertia::render('pwa/settings');
-    })->name('pwa.settings');
+    // Health check
+    Route::get('/health', [CameraStreamController::class, 'healthCheck']);
 });
 
 require __DIR__.'/settings.php';

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - FallDetector</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #979B80 0%, #BAD4D0 100%);
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 400px;
+        }
+        h1 { font-size: 2em; margin-bottom: 0.5em; }
+        p { font-size: 1.1em; opacity: 0.9; }
+        button {
+            margin-top: 2em;
+            padding: 12px 24px;
+            font-size: 1em;
+            background: white;
+            color: #979B80;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📡 Você está offline</h1>
+    <p>Não foi possível conectar ao servidor. Verifique sua conexão com a internet.</p>
+    <button onclick="location.reload()">Tentar Novamente</button>
+</div>
+</body>
+</html>

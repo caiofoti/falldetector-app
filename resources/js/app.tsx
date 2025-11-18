@@ -45,3 +45,7 @@ createInertiaApp({
 });
 
 initializeTheme();
+
+if ('serviceWorker' in navigator) {
+    console.log('Service Worker support detected, waiting for user action');
+}
