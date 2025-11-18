@@ -10,6 +10,7 @@ use Inertia\Inertia;
 class MonitoringSessionController extends Controller
 {
     use AuthorizesRequests;
+
     public function index()
     {
         $sessions = auth()->user()->monitoringSessions()
@@ -18,6 +19,18 @@ class MonitoringSessionController extends Controller
             ->get();
 
         return Inertia::render('dashboard', [
+            'sessions' => $sessions,
+        ]);
+    }
+
+    public function sessions()
+    {
+        $sessions = auth()->user()->monitoringSessions()
+            ->withCount('alerts')
+            ->latest()
+            ->get();
+
+        return Inertia::render('monitoring/sessions', [
             'sessions' => $sessions,
         ]);
     }
@@ -50,7 +63,7 @@ class MonitoringSessionController extends Controller
         ]);
 
         $session = auth()->user()->monitoringSessions()->create(array_merge($validated, [
-            'status' => 'active',
+            'status' => 'inactive',
         ]));
 
         return redirect()->route('monitoring.show', $session)

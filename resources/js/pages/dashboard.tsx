@@ -89,7 +89,7 @@ export default function Dashboard({ sessions }: DashboardProps) {
 
                 {/* Sessions List */}
                 <div>
-                    <h2 className="text-base font-semibold mb-3 sm:text-lg sm:mb-4">Sessões de Monitoramento</h2>
+                    <h2 className="text-base font-semibold mb-3 sm:text-lg sm:mb-4">Sessões Ativas</h2>
 
                     {sessions.length === 0 ? (
                         <Card className="p-8 sm:p-12">

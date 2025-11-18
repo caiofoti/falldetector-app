@@ -13,7 +13,7 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
-import { LayoutGrid, History, Bell, Settings, Download } from 'lucide-react';
+import { LayoutGrid, List } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
@@ -21,6 +21,11 @@ const mainNavItems: NavItem[] = [
         title: 'Painel',
         href: dashboard(),
         icon: LayoutGrid,
+    },
+    {
+        title: 'Sessões',
+        href: '/monitoring/sessions',
+        icon: List,
     }
 ];
 

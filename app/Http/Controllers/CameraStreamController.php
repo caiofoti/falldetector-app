@@ -9,28 +9,25 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Jobs\ProcessFallDetection;
 
 class CameraStreamController extends Controller
 {
     private const PYTHON_SERVICE_URL = 'http://localhost:8080';
 
-    /**
-     * Stream de vídeo MJPEG do Python
-     */
     public function stream(MonitoringSession $session)
     {
         $this->authorize('view', $session);
 
         return new StreamedResponse(function () use ($session) {
             set_time_limit(0);
+            ob_implicit_flush(true);
 
             $ch = curl_init(self::PYTHON_SERVICE_URL . '/video_feed');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => false,
                 CURLOPT_HEADER => false,
                 CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_CONNECTTIMEOUT => 10,
-                CURLOPT_TIMEOUT => 0,
                 CURLOPT_WRITEFUNCTION => function ($curl, $data) {
                     echo $data;
                     if (ob_get_level() > 0) {
@@ -66,24 +63,15 @@ class CameraStreamController extends Controller
         ]);
     }
 
-    /**
-     * Verificar status do Python pipeline
-     */
     public function checkStatus(MonitoringSession $session)
     {
         $this->authorize('view', $session);
 
         try {
-            $response = Http::timeout(3)->get(self::PYTHON_SERVICE_URL . '/status');
+            $response = Http::get(self::PYTHON_SERVICE_URL . '/status');
 
             if ($response->successful()) {
                 $data = $response->json();
-
-                Log::info('Python status check', [
-                    'session_id' => $session->id,
-                    'fall_detected' => $data['fall_detected'] ?? false,
-                    'python_session_id' => $data['session_id'] ?? null
-                ]);
 
                 return response()->json($data);
             }
@@ -100,9 +88,6 @@ class CameraStreamController extends Controller
         ], 503);
     }
 
-    /**
-     * Iniciar monitoramento
-     */
     public function startMonitoring(MonitoringSession $session)
     {
         $this->authorize('view', $session);
@@ -114,7 +99,7 @@ class CameraStreamController extends Controller
                 'camera_type' => $session->camera_type
             ]);
 
-            $response = Http::timeout(10)->post(self::PYTHON_SERVICE_URL . '/start', [
+            $response = Http::post(self::PYTHON_SERVICE_URL . '/start', [
                 'session_id' => $session->id,
                 'camera_url' => $session->camera_url,
                 'camera_type' => $session->camera_type
@@ -164,9 +149,6 @@ class CameraStreamController extends Controller
         }
     }
 
-    /**
-     * Parar monitoramento
-     */
     public function stopMonitoring(MonitoringSession $session)
     {
         $this->authorize('view', $session);
@@ -174,7 +156,7 @@ class CameraStreamController extends Controller
         try {
             Log::info('Stopping monitoring', ['session_id' => $session->id]);
 
-            $response = Http::timeout(5)->post(self::PYTHON_SERVICE_URL . '/stop', [
+            $response = Http::post(self::PYTHON_SERVICE_URL . '/stop', [
                 'session_id' => $session->id
             ]);
 
@@ -193,7 +175,6 @@ class CameraStreamController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            // Mesmo com erro, marcar como inativo
             $session->update(['status' => 'inactive']);
 
             return response()->json([
@@ -203,62 +184,45 @@ class CameraStreamController extends Controller
         }
     }
 
-    /**
-     * Webhook recebido do Python quando detecta queda
-     */
     public function handleFallDetection(Request $request)
     {
-        $validated = $request->validate([
-            'session_id' => 'required|integer|exists:monitoring_sessions,id',
-            'confidence_score' => 'nullable|numeric|min:0|max:100',
-            'snapshot_base64' => 'nullable|string',
-        ]);
+        file_put_contents(storage_path('logs/webhook-debug.log'),
+            date('Y-m-d H:i:s') . ' - Webhook received: ' . json_encode($request->all()) . PHP_EOL,
+            FILE_APPEND
+        );
 
         try {
-            $session = MonitoringSession::findOrFail($validated['session_id']);
+            $sessionId = $request->input('session_id');
+            $confidence = $request->input('confidence_score', 95.0);
+            $snapshotBase64 = $request->input('snapshot');
 
-            // Salvar snapshot se fornecido
-            $snapshotPath = null;
-            if (!empty($validated['snapshot_base64'])) {
-                $snapshotPath = $this->saveSnapshot(
-                    $validated['snapshot_base64'],
-                    $session->id
-                );
+            if (!$sessionId) {
+                return response()->json(['success' => false, 'error' => 'No session_id'], 400);
             }
 
-            // Criar alerta
-            $alert = FallAlert::create([
-                'monitoring_session_id' => $session->id,
-                'detected_at' => now(),
-                'confidence_score' => $validated['confidence_score'] ?? 95.0,
-                'snapshot_path' => $snapshotPath,
-                'status' => 'pending',
-                'detection_metadata' => [
-                    'source' => 'python_pipeline',
-                    'algorithm' => 'mediapipe_pose',
-                    'timestamp' => now()->toIso8601String()
-                ]
-            ]);
+            $session = MonitoringSession::find($sessionId);
+            if (!$session) {
+                return response()->json(['success' => false, 'error' => 'Session not found'], 404);
+            }
 
-            // Broadcast evento para WebSocket
-            broadcast(new FallDetected($alert))->toOthers();
+            // Despachar o job para processar em background
+            ProcessFallDetection::dispatch($sessionId, $confidence, $snapshotBase64);
 
-            Log::info('Fall detected and alert created', [
-                'alert_id' => $alert->id,
-                'session_id' => $session->id,
-                'confidence' => $alert->confidence_score
-            ]);
+            file_put_contents(storage_path('logs/webhook-debug.log'),
+                date('Y-m-d H:i:s') . ' - Job dispatched for session: ' . $sessionId . PHP_EOL,
+                FILE_APPEND
+            );
 
             return response()->json([
                 'success' => true,
-                'alert_id' => $alert->id
-            ], 201);
+                'message' => 'Fall detection queued for processing'
+            ], 202);
 
-        } catch (\Exception $e) {
-            Log::error('Failed to handle fall detection', [
-                'error' => $e->getMessage(),
-                'request' => $request->all()
-            ]);
+        } catch (\Throwable $e) {
+            file_put_contents(storage_path('logs/webhook-debug.log'),
+                date('Y-m-d H:i:s') . ' - ERROR: ' . $e->getMessage() . PHP_EOL,
+                FILE_APPEND
+            );
 
             return response()->json([
                 'success' => false,
@@ -267,50 +231,10 @@ class CameraStreamController extends Controller
         }
     }
 
-    /**
-     * Salvar snapshot da queda
-     */
-    private function saveSnapshot(string $base64Data, int $sessionId): string
-    {
-        try {
-            // Remover prefixo data:image se existir
-            $base64Data = preg_replace('/^data:image\/\w+;base64,/', '', $base64Data);
-
-            $imageData = base64_decode($base64Data);
-
-            if ($imageData === false) {
-                throw new \Exception('Invalid base64 data');
-            }
-
-            $filename = 'fall_' . $sessionId . '_' . time() . '.jpg';
-            $path = 'snapshots/' . date('Y/m');
-            $fullPath = storage_path('app/public/' . $path);
-
-            if (!file_exists($fullPath)) {
-                mkdir($fullPath, 0755, true);
-            }
-
-            $filePath = $fullPath . '/' . $filename;
-            file_put_contents($filePath, $imageData);
-
-            return '/storage/' . $path . '/' . $filename;
-
-        } catch (\Exception $e) {
-            Log::error('Failed to save snapshot', [
-                'error' => $e->getMessage(),
-                'session_id' => $sessionId
-            ]);
-            return null;
-        }
-    }
-
-    /**
-     * Health check do Python service
-     */
     public function healthCheck()
     {
         try {
-            $response = Http::timeout(3)->get(self::PYTHON_SERVICE_URL . '/health');
+            $response = Http::get(self::PYTHON_SERVICE_URL . '/health');
 
             if ($response->successful()) {
                 return response()->json([

@@ -14,10 +14,18 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
+// API routes públicas para Python service (ANTES do middleware auth)
+Route::prefix('api')->group(function () {
+    Route::post('/fall-detected', [CameraStreamController::class, 'handleFallDetection'])
+        ->name('api.fall-detected');
+
+    Route::get('/health', [CameraStreamController::class, 'healthCheck'])
+        ->name('api.health');
+});
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [MonitoringSessionController::class, 'index'])->name('dashboard');
 
-    // Camera streaming e controle
     Route::prefix('camera/{session}')->name('camera.')->group(function () {
         Route::get('/stream', [CameraStreamController::class, 'stream'])->name('stream');
         Route::get('/status', [CameraStreamController::class, 'checkStatus'])->name('status');
@@ -26,6 +34,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('monitoring')->name('monitoring.')->group(function () {
+        Route::get('/sessions', [MonitoringSessionController::class, 'sessions'])->name('sessions');
         Route::get('/create', [MonitoringSessionController::class, 'create'])->name('create');
         Route::post('/', [MonitoringSessionController::class, 'store'])->name('store');
         Route::get('/{session}', [MonitoringSessionController::class, 'show'])->name('show');
@@ -35,21 +44,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('alerts.acknowledge');
     });
 
-    // API routes para frontend
     Route::prefix('api/monitoring')->group(function () {
         Route::get('/{session}/alerts', [MonitoringApiController::class, 'getAlerts']);
         Route::get('/{session}/stats', [MonitoringApiController::class, 'getStats']);
     });
-});
-
-// API routes públicas para Python service
-Route::prefix('api')->group(function () {
-    // Webhook de detecção de queda
-    Route::post('/fall-detected', [CameraStreamController::class, 'handleFallDetection'])
-        ->withoutMiddleware([\App\Http\Middleware\Authenticate::class]);
-
-    // Health check
-    Route::get('/health', [CameraStreamController::class, 'healthCheck']);
 });
 
 require __DIR__.'/settings.php';

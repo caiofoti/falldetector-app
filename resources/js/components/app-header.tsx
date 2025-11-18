@@ -9,7 +9,7 @@ import { cn, isSameUrl } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import { type BreadcrumbItem, type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutGrid, Bell } from 'lucide-react';
+import { LayoutGrid, List, Bell } from 'lucide-react';
 import AppLogoIcon from './app-logo-icon';
 
 const mainNavItems: NavItem[] = [
@@ -18,6 +18,11 @@ const mainNavItems: NavItem[] = [
         href: dashboard(),
         icon: LayoutGrid,
     },
+    {
+        title: 'Sessões',
+        href: '/monitoring/sessions',
+        icon: List,
+    }
 ];
 
 interface AppHeaderProps {

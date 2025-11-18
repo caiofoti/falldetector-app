@@ -42,75 +42,62 @@ export default function LiveView({ session }: LiveViewProps) {
     const [streamError, setStreamError] = useState<string>('');
     const imgRef = useRef<HTMLImageElement>(null);
     const statusCheckInterval = useRef<number | null>(null);
-    const streamCheckInterval = useRef<number | null>(null);
+    const reconnectAttempts = useRef(0);
+    const maxReconnectAttempts = 3;
 
-    // Inicializar stream se monitoramento já estiver ativo
-    useEffect(() => {
-        if (session.status === 'active' && imgRef.current) {
-            // Aguardar um pouco para garantir que o componente foi montado
-            setTimeout(() => {
-                if (imgRef.current) {
-                    imgRef.current.src = `/camera/${session.id}/stream?t=${Date.now()}`;
+    const initializeStream = useCallback(() => {
+        if (imgRef.current && isMonitoring) {
+            const timestamp = Date.now();
+            imgRef.current.src = `/camera/${session.id}/stream?t=${timestamp}`;
+
+            imgRef.current.onload = () => {
+                setStreamError('');
+                setIsConnected(true);
+                reconnectAttempts.current = 0;
+            };
+
+            imgRef.current.onerror = () => {
+                setIsConnected(false);
+                if (reconnectAttempts.current < maxReconnectAttempts) {
+                    reconnectAttempts.current++;
+                    setTimeout(initializeStream, 2000);
+                } else {
+                    setStreamError('Falha ao conectar com o stream. Verifique se o serviço Python está rodando.');
                 }
-            }, 500);
+            };
         }
-    }, []);
+    }, [session.id, isMonitoring]);
 
-    // Verificar status inicial e do Python a cada 2 segundos
     useEffect(() => {
         const checkPythonStatus = async () => {
             try {
                 const response = await axios.get(`/camera/${session.id}/status`);
                 setPythonStatus(response.data);
 
-                // Se o Python tem uma sessão ativa, sincronizar o estado
                 if (response.data.session_id && response.data.is_running) {
                     if (!isMonitoring) {
                         setIsMonitoring(true);
-                        setIsConnected(true);
                         setSessionStatus('active');
-
-                        // Iniciar stream se não estiver rodando
-                        if (imgRef.current && !imgRef.current.src.includes('/stream')) {
-                            imgRef.current.src = `/camera/${session.id}/stream?t=${Date.now()}`;
-                        }
                     }
-                } else if (isMonitoring && !response.data.is_running) {
-                    // Python parou, sincronizar estado
-                    setIsMonitoring(false);
-                    setIsConnected(false);
-                    setSessionStatus('inactive');
-                }
-
-                if (response.data.fall_detected && !alerts.find(a => a.status === 'pending')) {
-                    // Nova queda detectada - será atualizada via WebSocket
+                    if (!isConnected && imgRef.current && !imgRef.current.src.includes('/stream')) {
+                        initializeStream();
+                    }
                 }
             } catch (error) {
                 console.error('Error checking Python status:', error);
-                setPythonStatus(null);
-
-                // Se não conseguir conectar com o Python, assumir que não está rodando
-                if (isMonitoring) {
-                    setIsMonitoring(false);
-                    setIsConnected(false);
-                }
             }
         };
 
-        // Verificação inicial imediata
         checkPythonStatus();
-
-        // Configurar intervalo de verificação
-        statusCheckInterval.current = setInterval(checkPythonStatus, 2000);
+        statusCheckInterval.current = setInterval(checkPythonStatus, 3000);
 
         return () => {
             if (statusCheckInterval.current) {
                 clearInterval(statusCheckInterval.current);
             }
         };
-    }, [session.id]);
+    }, [session.id, isMonitoring, isConnected, initializeStream]);
 
-    // Buscar alertas existentes
     const fetchAlerts = useCallback(async () => {
         try {
             const response = await axios.get(`/api/monitoring/${session.id}/alerts`);
@@ -122,7 +109,6 @@ export default function LiveView({ session }: LiveViewProps) {
         }
     }, [session.id]);
 
-    // Iniciar monitoramento
     const startMonitoring = async () => {
         try {
             setStreamError('');
@@ -131,32 +117,12 @@ export default function LiveView({ session }: LiveViewProps) {
             const response = await axios.post(`/camera/${session.id}/start`);
 
             if (response.data.success) {
-                setIsConnected(true);
+                setIsConnected(false);
                 setSessionStatus('active');
 
-                // Aguardar um pouco para o Python inicializar completamente
                 setTimeout(() => {
-                    if (imgRef.current) {
-                        imgRef.current.src = `/camera/${session.id}/stream?t=${Date.now()}`;
-
-                        // Verificar se o stream está funcionando
-                        const checkStream = () => {
-                            if (imgRef.current) {
-                                imgRef.current.onerror = () => {
-                                    setStreamError('Falha ao carregar stream de vídeo. Verifique se o serviço Python está rodando.');
-                                    setIsConnected(false);
-                                };
-
-                                imgRef.current.onload = () => {
-                                    setStreamError('');
-                                    setIsConnected(true);
-                                };
-                            }
-                        };
-
-                        checkStream();
-                    }
-                }, 1000);
+                    initializeStream();
+                }, 2000);
             } else {
                 setStreamError(response.data.message || 'Falha ao iniciar monitoramento');
                 setIsMonitoring(false);
@@ -168,7 +134,6 @@ export default function LiveView({ session }: LiveViewProps) {
         }
     };
 
-    // Parar monitoramento
     const stopMonitoring = async () => {
         try {
             await axios.post(`/camera/${session.id}/stop`);
@@ -182,32 +147,31 @@ export default function LiveView({ session }: LiveViewProps) {
                 imgRef.current.onload = null;
                 imgRef.current.onerror = null;
             }
-
-            // Limpar intervalos
-            if (streamCheckInterval.current) {
-                clearInterval(streamCheckInterval.current);
-                streamCheckInterval.current = null;
-            }
         } catch (error) {
             console.error('Error stopping monitoring:', error);
-            // Mesmo com erro, atualizar estado local
             setIsMonitoring(false);
             setIsConnected(false);
             setSessionStatus('inactive');
         }
     };
 
-    // WebSocket para alertas em tempo real
     useEffect(() => {
+        console.log('Setting up WebSocket connection for session:', session.id);
+
         const channel = window.Echo.private(`monitoring-session.${session.id}`);
 
         channel
             .listen('.fall.detected', (data: FallAlert) => {
-                setAlerts(prev => [data, ...prev.slice(0, 19)]);
+                console.log('✅ Fall detected event received:', data);
+                setAlerts(prev => {
+                    const newAlerts = [data, ...prev.slice(0, 19)];
+                    console.log('Updated alerts:', newAlerts);
+                    return newAlerts;
+                });
 
                 if (soundEnabled) {
                     const audio = new Audio('/sounds/alert.mp3');
-                    audio.play().catch(() => {});
+                    audio.play().catch((err) => console.error('Audio play error:', err));
                 }
 
                 if ('Notification' in window && Notification.permission === 'granted') {
@@ -219,30 +183,36 @@ export default function LiveView({ session }: LiveViewProps) {
                 }
             })
             .listen('.session.status.changed', (data: { status: string }) => {
+                console.log('Session status changed:', data);
                 setSessionStatus(data.status);
             });
 
-        channel.subscribed(() => setIsConnected(true));
-        channel.error(() => setIsConnected(false));
+        channel.subscribed(() => {
+            console.log('✅ Successfully subscribed to channel:', `monitoring-session.${session.id}`);
+        });
+
+        channel.error((error: any) => {
+            console.error('❌ Channel error:', error);
+        });
+
+        // Test connection
+        console.log('Echo instance:', window.Echo);
+        console.log('Channel:', channel);
 
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
 
-        // Buscar alertas existentes
         fetchAlerts();
 
         return () => {
+            console.log('Cleaning up WebSocket connection');
             channel.stopListening('.fall.detected');
             channel.stopListening('.session.status.changed');
             window.Echo.leave(`monitoring-session.${session.id}`);
 
-            // Limpar todos os intervalos ao sair da página
             if (statusCheckInterval.current) {
                 clearInterval(statusCheckInterval.current);
-            }
-            if (streamCheckInterval.current) {
-                clearInterval(streamCheckInterval.current);
             }
         };
     }, [session.id, soundEnabled, fetchAlerts]);
@@ -268,7 +238,6 @@ export default function LiveView({ session }: LiveViewProps) {
             <Head title={`Ao Vivo - ${session.name}`} />
 
             <div className="space-y-4 p-4 md:space-y-6 md:p-6">
-                {/* Header */}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                         <h1 className="text-xl font-semibold truncate sm:text-2xl">{session.name}</h1>
@@ -322,7 +291,6 @@ export default function LiveView({ session }: LiveViewProps) {
                     </div>
                 </div>
 
-                {/* Error Message */}
                 {streamError && (
                     <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3 sm:p-4">
                         <div className="flex items-start gap-2">
@@ -339,33 +307,32 @@ export default function LiveView({ session }: LiveViewProps) {
                 )}
 
                 <div className="grid gap-4 lg:grid-cols-3 md:gap-6">
-                    {/* Video Stream */}
                     <div className="lg:col-span-2">
                         <Card className="overflow-hidden p-0">
                             <div className="relative aspect-video bg-gray-900">
-                    {isMonitoring ? (
-                        <>
-                            <img
-                                ref={imgRef}
-                                alt="Feed ao vivo"
-                                className="h-full w-full object-contain"
-                                style={{ display: isConnected ? 'block' : 'none' }}
-                            />
-                            {!isConnected && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                                    <div className="text-center text-white p-4">
-                                        <Camera className="mx-auto mb-2 h-12 w-12 sm:h-16 sm:w-16 animate-pulse" />
-                                        <p className="text-sm sm:text-base">
-                                            {streamError ? 'Erro de conexão' : 'Conectando ao stream...'}
-                                        </p>
-                                        {streamError && (
-                                            <p className="text-xs text-red-300 mt-2">{streamError}</p>
+                                {isMonitoring ? (
+                                    <>
+                                        <img
+                                            ref={imgRef}
+                                            alt="Feed ao vivo"
+                                            className="h-full w-full object-contain"
+                                            style={{ display: isConnected ? 'block' : 'none' }}
+                                        />
+                                        {!isConnected && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                                                <div className="text-center text-white p-4">
+                                                    <Camera className="mx-auto mb-2 h-12 w-12 sm:h-16 sm:w-16 animate-pulse" />
+                                                    <p className="text-sm sm:text-base">
+                                                        {streamError ? 'Erro de conexão' : 'Conectando ao stream...'}
+                                                    </p>
+                                                    {streamError && (
+                                                        <p className="text-xs text-red-300 mt-2">{streamError}</p>
+                                                    )}
+                                                </div>
+                                            </div>
                                         )}
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    ) : (
+                                    </>
+                                ) : (
                                     <div className="absolute inset-0 flex items-center justify-center text-white">
                                         <div className="text-center p-4">
                                             <Camera className="mx-auto mb-3 h-12 w-12 sm:h-16 sm:w-16" />
@@ -380,9 +347,7 @@ export default function LiveView({ session }: LiveViewProps) {
                         </Card>
                     </div>
 
-                    {/* Sidebar */}
                     <div className="space-y-4">
-                        {/* Status Card */}
                         <Card className="p-3 sm:p-4">
                             <h3 className="mb-3 font-medium flex items-center gap-2 text-sm sm:text-base sm:mb-4">
                                 <Settings className="h-4 w-4" />
@@ -419,7 +384,6 @@ export default function LiveView({ session }: LiveViewProps) {
                             </div>
                         </Card>
 
-                        {/* Alerts Card */}
                         <Card className="p-3 sm:p-4">
                             <h3 className="mb-3 flex items-center gap-2 font-medium text-sm sm:text-base sm:mb-4">
                                 <AlertTriangle className="h-4 w-4 text-orange-500 sm:h-5 sm:w-5" />
@@ -468,7 +432,6 @@ export default function LiveView({ session }: LiveViewProps) {
                             </div>
                         </Card>
 
-                        {/* Mobile Delete Button */}
                         <Button
                             variant="destructive"
                             onClick={handleStopSession}
