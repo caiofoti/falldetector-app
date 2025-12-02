@@ -13,7 +13,7 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
-import { LayoutGrid, List } from 'lucide-react';
+import { Clock, LayoutGrid } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
@@ -23,9 +23,9 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'Sessões',
-        href: '/monitoring/sessions',
-        icon: List,
+        title: 'Histórico',
+        href: '/history',
+        icon: Clock,
     }
 ];
 

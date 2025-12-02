@@ -1,21 +1,27 @@
 import AppLayout from '@/layouts/app-layout';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Head, router, useForm } from '@inertiajs/react';
-import { ArrowLeft, Camera, Info } from 'lucide-react';
-import InputError from '@/components/input-error';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Textarea } from '@/components/ui/textarea';
 import { useEffect, useRef, useState } from 'react';
 
-export default function Create() {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const [stream, setStream] = useState<MediaStream | null>(null);
+import {
+    Card, CardHeader, CardTitle, CardDescription, CardContent
+} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import InputError from '@/components/input-error';
+import { Label } from '@/components/ui/label';
+import { Select, SelectTrigger, SelectContent, SelectValue, SelectItem } from '@/components/ui/select';
+import { Tooltip, TooltipTrigger, TooltipProvider, TooltipContent } from '@/components/ui/tooltip';
+
+import { ArrowLeft, Camera, Info } from 'lucide-react';
+
+export default function CreateMonitoring() {
+
+    const videoRef = useRef<HTMLVideoElement | null>(null);
     const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+    const [stream, setStream] = useState<MediaStream | null>(null);
     const [previewError, setPreviewError] = useState<string>('');
+    const [previewEnabled, setPreviewEnabled] = useState(true);
 
     const { data, setData, post, processing, errors } = useForm({
         name: '',
@@ -24,10 +30,19 @@ export default function Create() {
         camera_url: '0',
     });
 
-    // Listar câmeras disponíveis
+    const stopPreview = () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            setStream(null);
+        }
+    };
+
     useEffect(() => {
         const getDevices = async () => {
             try {
+                if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+                    return;
+                }
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoDevices = devices.filter(device => device.kind === 'videoinput');
                 setCameraDevices(videoDevices);
@@ -39,10 +54,9 @@ export default function Create() {
         getDevices();
     }, []);
 
-    // Preview da câmera
     useEffect(() => {
         const startPreview = async () => {
-            if (data.camera_type !== 'webcam') {
+            if (data.camera_type !== 'webcam' || !previewEnabled) {
                 stopPreview();
                 return;
             }
@@ -58,14 +72,19 @@ export default function Create() {
                     audio: false
                 };
 
+                if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('API de mídia não suportada neste navegador/dispositivo.');
+                }
+
                 const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
                 setStream(mediaStream);
 
                 if (videoRef.current) {
                     videoRef.current.srcObject = mediaStream;
                 }
-            } catch (error: any) {
-                setPreviewError(error.message || 'Erro ao acessar câmera');
+            } catch (error: unknown) {
+                const err = error as { message?: string };
+                setPreviewError(err?.message || 'Erro ao acessar câmera');
                 console.error('Erro ao iniciar preview:', error);
             }
         };
@@ -75,14 +94,7 @@ export default function Create() {
         return () => {
             stopPreview();
         };
-    }, [data.camera_type, data.camera_url]);
-
-    const stopPreview = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
-        }
-    };
+    }, [data.camera_type, data.camera_url, previewEnabled]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -120,9 +132,8 @@ export default function Create() {
         <AppLayout>
             <Head title="Nova Sessão de Monitoramento" />
 
-            <div className="p-4 space-y-4 max-w-4xl mx-auto md:p-6 md:space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-3">
+            <div className="flex h-full flex-col">
+                <div className="flex items-center gap-3 px-4 py-4 border-b md:px-6 lg:px-8">
                     <Button
                         variant="ghost"
                         size="icon"
@@ -131,25 +142,28 @@ export default function Create() {
                     >
                         <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
-                    <div className="min-w-0">
-                        <h1 className="text-xl font-bold truncate sm:text-2xl md:text-3xl">Nova Sessão</h1>
+                    <div className="min-w-0 flex-1">
+                        <h1 className="text-xl font-bold truncate sm:text-2xl">Nova Sessão</h1>
                         <p className="text-xs text-muted-foreground mt-0.5 sm:text-sm">
                             Configure sua câmera de detecção
                         </p>
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 md:gap-6">
-                    {/* Preview Card */}
-                    <Card className="md:sticky md:top-4 md:self-start">
-                        <CardHeader>
-                            <CardTitle className="text-base sm:text-lg">Preview da Câmera</CardTitle>
-                            <CardDescription className="text-xs sm:text-sm">
-                                Visualize o que a câmera está captando
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
+                <div className="flex-1 overflow-y-auto">
+                    <div className="container max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
+                        <div className="grid gap-4 lg:grid-cols-2 lg:gap-6 xl:gap-8">
+
+                            <Card className="lg:sticky lg:top-4 lg:self-start order-2 lg:order-1">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-base sm:text-lg">Preview da Câmera</CardTitle>
+                                    <CardDescription className="text-xs sm:text-sm">
+                                        Visualize o que a câmera está captando
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="pb-4">
                             <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
+
                                 {data.camera_type === 'webcam' ? (
                                     <>
                                         <video
@@ -158,16 +172,43 @@ export default function Create() {
                                             playsInline
                                             muted
                                             className="w-full h-full object-cover"
+                                            style={{ display: stream && previewEnabled ? 'block' : 'none' }}
                                         />
-                                        {previewError && (
+
+                                        {previewError && previewEnabled && (
                                             <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-4">
-                                                <div className="text-center text-white">
-                                                    <Camera className="mx-auto mb-2 h-8 w-8 sm:h-12 sm:w-12" />
+                                                <div className="text-center text-white space-y-3">
+                                                    <Camera className="mx-auto h-8 w-8 sm:h-12 sm:w-12" />
                                                     <p className="text-xs sm:text-sm">{previewError}</p>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => setPreviewEnabled(false)}
+                                                        className="text-xs"
+                                                    >
+                                                        Fechar Preview
+                                                    </Button>
                                                 </div>
                                             </div>
                                         )}
-                                        {!stream && !previewError && (
+
+                                        {!previewEnabled && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                                                <div className="text-center text-white space-y-3 p-4">
+                                                    <Camera className="mx-auto h-8 w-8 sm:h-12 sm:w-12" />
+                                                    <p className="text-xs sm:text-sm">Preview desativado</p>
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() => setPreviewEnabled(true)}
+                                                        className="text-xs"
+                                                    >
+                                                        Ativar Preview
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {previewEnabled && !stream && !previewError && (
                                             <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                                                 <div className="text-center text-white">
                                                     <Camera className="mx-auto mb-2 h-8 w-8 sm:h-12 sm:w-12 animate-pulse" />
@@ -187,22 +228,23 @@ export default function Create() {
                                         </div>
                                     </div>
                                 )}
-                            </div>
-                        </CardContent>
-                    </Card>
 
-                    {/* Form Card */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base sm:text-lg">Configuração</CardTitle>
-                            <CardDescription className="text-xs sm:text-sm">
-                                Preencha os dados da sessão
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="order-1 lg:order-2">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-base sm:text-lg">Configuração</CardTitle>
+                                    <CardDescription className="text-xs sm:text-sm">
+                                        Preencha os dados da sessão
+                                    </CardDescription>
+                                </CardHeader>
+
+                                <CardContent className="pb-4">
                             <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
                                 <TooltipProvider>
-                                    {/* Nome */}
+
                                     <div className="space-y-2">
                                         <div className="flex items-center gap-2">
                                             <Label htmlFor="name" className="text-xs sm:text-sm">
@@ -217,6 +259,7 @@ export default function Create() {
                                                 </TooltipContent>
                                             </Tooltip>
                                         </div>
+
                                         <Input
                                             id="name"
                                             placeholder="ex: Monitor da Sala"
@@ -228,7 +271,6 @@ export default function Create() {
                                         <InputError message={errors.name} />
                                     </div>
 
-                                    {/* Descrição */}
                                     <div className="space-y-2">
                                         <Label htmlFor="description" className="text-xs sm:text-sm">Descrição</Label>
                                         <Textarea
@@ -242,7 +284,6 @@ export default function Create() {
                                         <InputError message={errors.description} />
                                     </div>
 
-                                    {/* Tipo de Câmera */}
                                     <div className="space-y-2">
                                         <Label htmlFor="camera_type" className="text-xs sm:text-sm">
                                             Tipo de Câmera <span className="text-red-500">*</span>
@@ -266,7 +307,6 @@ export default function Create() {
                                         <InputError message={errors.camera_type} />
                                     </div>
 
-                                    {/* Seleção de Câmera */}
                                     <div className="space-y-2">
                                         <Label htmlFor="camera_url" className="text-xs sm:text-sm">
                                             {data.camera_type === 'webcam' ? 'Câmera' : 'URL/ID da Câmera'} <span className="text-red-500">*</span>
@@ -298,14 +338,12 @@ export default function Create() {
                                                 className="text-sm"
                                             />
                                         )}
-                                        <p className="text-xs text-muted-foreground">
-                                            {getCameraHelpText()}
-                                        </p>
+                                        <p className="text-xs text-muted-foreground">{getCameraHelpText()}</p>
                                         <InputError message={errors.camera_url} />
                                     </div>
+
                                 </TooltipProvider>
 
-                                {/* Actions */}
                                 <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:pt-4">
                                     <Button
                                         type="button"
@@ -315,17 +353,17 @@ export default function Create() {
                                     >
                                         Cancelar
                                     </Button>
-                                    <Button
-                                        type="submit"
-                                        disabled={processing}
-                                        className="flex-1 text-sm"
-                                    >
+
+                                    <Button type="submit" disabled={processing} className="flex-1 text-sm">
                                         {processing ? 'Criando...' : 'Criar Sessão'}
                                     </Button>
                                 </div>
-                            </form>
-                        </CardContent>
-                    </Card>
+
+                                    </form>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
                 </div>
             </div>
         </AppLayout>

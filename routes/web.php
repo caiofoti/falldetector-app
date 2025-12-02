@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Api\MonitoringApiController;
 use App\Http\Controllers\FallAlertController;
+use App\Http\Controllers\HistoryController;
 use App\Http\Controllers\MonitoringSessionController;
 use App\Http\Controllers\CameraStreamController;
+use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -21,6 +23,10 @@ Route::prefix('api')->group(function () {
 
     Route::get('/health', [CameraStreamController::class, 'healthCheck'])
         ->name('api.health');
+
+    // Rota de teste - simula uma queda sem precisar do Python
+    Route::post('/test-fall', [CameraStreamController::class, 'testFallDetection'])
+        ->name('api.test-fall');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -47,6 +53,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('api/monitoring')->group(function () {
         Route::get('/{session}/alerts', [MonitoringApiController::class, 'getAlerts']);
         Route::get('/{session}/stats', [MonitoringApiController::class, 'getStats']);
+    });
+
+    Route::prefix('api/notifications')->name('api.notifications.')->group(function () {
+        Route::get('/', [NotificationController::class, 'index'])->name('index');
+        Route::get('/unread', [NotificationController::class, 'unread'])->name('unread');
+        Route::post('/{id}/read', [NotificationController::class, 'markAsRead'])->name('read');
+        Route::post('/read-all', [NotificationController::class, 'markAllAsRead'])->name('read-all');
+        Route::delete('/{id}', [NotificationController::class, 'destroy'])->name('destroy');
+    });
+
+    // Histórico com DataTables
+    Route::prefix('history')->name('history.')->group(function () {
+        Route::get('/', [HistoryController::class, 'index'])->name('index');
+        Route::get('/sessions-data', [HistoryController::class, 'sessions'])->name('sessions.data');
+        Route::get('/alerts-data', [HistoryController::class, 'alerts'])->name('alerts.data');
+        Route::get('/notifications-data', [HistoryController::class, 'notifications'])->name('notifications.data');
     });
 });
 

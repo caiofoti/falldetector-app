@@ -12,7 +12,7 @@ from typing import Optional
 import logging
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5,
+    min_detection_confidence=0.4,  # Reduzido de 0.5 para 0.4 - detecta poses com mais facilidade
+    min_tracking_confidence=0.4,  # Reduzido de 0.5 para 0.4 - rastreia melhor em movimentos rápidos
     model_complexity=1
 )
 mp_drawing = mp.solutions.drawing_utils
@@ -39,43 +39,76 @@ class MonitoringSession:
     last_snapshot: Optional[bytes] = None
     processing_thread: Optional[threading.Thread] = None
 
-active_sessions = {}
 current_session: Optional[MonitoringSession] = None
 session_lock = threading.Lock()
 
 LARAVEL_BASE_URL = 'http://localhost:8000'
 WEBHOOK_ENDPOINT = f'{LARAVEL_BASE_URL}/api/fall-detected'
 
+def generate_frames():
+    """Gera frames para streaming"""
+    global current_session
+
+    while current_session and current_session.is_running:
+        if current_session.frame_output is not None:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + current_session.frame_output + b'\r\n')
+        time.sleep(0.033)  # ~30 FPS
+
 @app.route('/video_feed')
 def video_feed():
-    """Stream MJPEG de vídeo"""
-    def generate():
-        global current_session
-        while current_session and current_session.is_running:
-            if current_session.frame_output is not None:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' +
-                       current_session.frame_output + b'\r\n')
-            time.sleep(0.033)
+    """Stream de vídeo"""
+    try:
+        if not current_session or not current_session.is_running:
+            logger.error("No active session for video feed")
+            return jsonify({'error': 'No active monitoring session'}), 404
 
-    return Response(generate(),
-                   mimetype='multipart/x-mixed-replace; boundary=frame')
+        logger.info(f"Starting video feed for session {current_session.session_id}")
+        return Response(
+            generate_frames(),
+            mimetype='multipart/x-mixed-replace; boundary=frame'
+        )
+    except Exception as e:
+        logger.error(f"Error in video_feed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/available_cameras', methods=['GET'])
+def available_cameras():
+    """Lista câmeras disponíveis"""
+    available = []
+    for i in range(5):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret:
+                available.append({
+                    'index': i,
+                    'name': f'Camera {i}'
+                })
+            cap.release()
+
+    logger.info(f"Câmeras disponíveis: {available}")
+    return jsonify({'cameras': available})
 
 @app.route('/status')
 def status():
     """Status atual do sistema"""
     global current_session
-    if current_session:
+
+    if current_session and current_session.is_running:
         return jsonify({
+            "status": "monitoring",
             "fall_detected": current_session.fall_detected,
             "session_id": current_session.session_id,
             "is_running": current_session.is_running,
             "timestamp": time.time()
         })
+
     return jsonify({
+        "status": "idle",
         "fall_detected": False,
         "is_running": False,
-        "error": "No active session",
+        "session_id": None,
         "timestamp": time.time()
     })
 
@@ -86,58 +119,83 @@ def start_monitoring():
 
     try:
         data = request.json
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No JSON data provided"
+            }), 400
+
         session_id = data.get('session_id')
         camera_url = data.get('camera_url', '0')
         camera_type = data.get('camera_type', 'webcam')
 
+        if not session_id:
+            return jsonify({
+                "success": False,
+                "error": "session_id is required"
+            }), 400
+
         logger.info(f"Starting session {session_id} - Type: {camera_type}, URL: {camera_url}")
 
         with session_lock:
+            # Parar sessão anterior se existir
             if current_session and current_session.is_running:
                 logger.info(f"Stopping previous session {current_session.session_id}")
                 stop_current_session()
+                time.sleep(0.5)  # Aguardar liberação da câmera
 
+            # Abrir câmera
             if camera_type == 'webcam':
                 try:
                     camera_index = int(camera_url)
-                except ValueError:
-                    camera_index = camera_url
+                except (ValueError, TypeError):
+                    camera_index = 0
 
-                camera = cv2.VideoCapture(camera_index)
+                logger.info(f"Opening webcam with index: {camera_index}")
+                camera = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)  # Windows
             else:
+                logger.info(f"Opening IP camera: {camera_url}")
                 camera = cv2.VideoCapture(camera_url)
 
             if not camera.isOpened():
                 logger.error(f"Cannot open camera: {camera_url}")
                 return jsonify({
                     "success": False,
-                    "error": "Cannot open camera"
+                    "error": f"Cannot open camera {camera_url}"
                 }), 500
 
+            # Configurar câmera
             camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
             camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            camera.set(cv2.CAP_PROP_FPS, 30)
+            camera.set(cv2.CAP_PROP_FPS, 60)
+            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
+            # Testar leitura
             ret, test_frame = camera.read()
-            if not ret:
+            if not ret or test_frame is None:
                 logger.error("Cannot read from camera")
                 camera.release()
                 return jsonify({
                     "success": False,
-                    "error": "Cannot read from camera"
+                    "error": "Cannot read frames from camera"
                 }), 500
 
+            logger.info(f"Camera opened successfully. Frame shape: {test_frame.shape}")
+
+            # Criar sessão
             current_session = MonitoringSession(
                 session_id=session_id,
                 camera=camera,
                 is_running=True
             )
 
+            # Iniciar thread de processamento
             processing_thread = threading.Thread(target=process_video, daemon=True)
             processing_thread.start()
             current_session.processing_thread = processing_thread
 
-            logger.info(f"Successfully started monitoring session {session_id}")
+
+            logger.info(f"✅ Successfully started monitoring session {session_id}")
             return jsonify({
                 "success": True,
                 "session_id": session_id,
@@ -145,7 +203,10 @@ def start_monitoring():
             })
 
     except Exception as e:
-        logger.error(f"Error starting monitoring: {str(e)}", exc_info=True)
+        logger.error(f"❌ Error starting monitoring: {str(e)}", exc_info=True)
+        if current_session and current_session.camera:
+            current_session.camera.release()
+            current_session = None
         return jsonify({
             "success": False,
             "error": str(e)
@@ -166,10 +227,12 @@ def stop_monitoring():
                     "success": True,
                     "message": f"Session {session_id} stopped"
                 })
+
         return jsonify({
             "success": False,
             "error": "No active session"
-        })
+        }), 404
+
     except Exception as e:
         logger.error(f"Error stopping monitoring: {str(e)}")
         return jsonify({
@@ -180,13 +243,20 @@ def stop_monitoring():
 def stop_current_session():
     """Helper para parar sessão atual"""
     global current_session
+
     if current_session:
         current_session.is_running = False
+
         if current_session.processing_thread:
             current_session.processing_thread.join(timeout=2)
+
         if current_session.camera:
             current_session.camera.release()
+
         current_session = None
+
+        # Limpar recursos do OpenCV
+        cv2.destroyAllWindows()
 
 def trigger_webhook(session_id: int, confidence: float, snapshot: Optional[np.ndarray] = None):
     """Notificar Laravel sobre queda detectada"""
@@ -196,10 +266,8 @@ def trigger_webhook(session_id: int, confidence: float, snapshot: Optional[np.nd
             'confidence_score': round(confidence, 2),
         }
 
-        # Reduzir tamanho do snapshot para evitar timeout
         if snapshot is not None:
             try:
-                # Redimensionar para 640x480
                 height, width = snapshot.shape[:2]
                 if width > 640:
                     scale = 640 / width
@@ -210,84 +278,77 @@ def trigger_webhook(session_id: int, confidence: float, snapshot: Optional[np.nd
                 _, buffer = cv2.imencode('.jpg', snapshot, [cv2.IMWRITE_JPEG_QUALITY, 60])
                 snapshot_base64 = base64.b64encode(buffer).decode('utf-8')
                 payload['snapshot_base64'] = snapshot_base64
-                logger.info(f"Snapshot encoded, size: {len(snapshot_base64)} chars")
             except Exception as e:
                 logger.error(f"Error encoding snapshot: {str(e)}")
 
         logger.info(f"Sending webhook to {WEBHOOK_ENDPOINT}")
-        logger.info(f"Payload: session_id={session_id}, confidence={confidence:.2f}%")
 
-        # Aumentar timeout e adicionar retry
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(
-                    WEBHOOK_ENDPOINT,
-                    json=payload,
-                    timeout=5,  # Reduzir para 5 segundos
-                    headers={'Content-Type': 'application/json'}
-                )
+        response = requests.post(
+            WEBHOOK_ENDPOINT,
+            json=payload,
+            timeout=5,
+            headers={'Content-Type': 'application/json'}
+        )
 
-                logger.info(f"Webhook response status: {response.status_code}")
-                logger.info(f"Webhook response body: {response.text}")
-
-                if response.status_code == 201:
-                    result = response.json()
-                    logger.info(f"✅ Webhook successful! Alert ID: {result.get('alert_id')}")
-                    return True
-                else:
-                    logger.warning(f"⚠️ Webhook returned {response.status_code}: {response.text}")
-                    if attempt < max_retries - 1:
-                        logger.info(f"Retrying... (attempt {attempt + 2}/{max_retries})")
-                        time.sleep(1)
-                        continue
-                    return False
-
-            except requests.exceptions.Timeout:
-                if attempt < max_retries - 1:
-                    logger.warning(f"⚠️ Timeout, retrying... (attempt {attempt + 2}/{max_retries})")
-                    time.sleep(1)
-                    continue
-                else:
-                    logger.error(f"❌ Webhook timeout after {max_retries} attempts")
-                    logger.error(f"URL: {WEBHOOK_ENDPOINT}")
-                    return False
-
-            except requests.exceptions.ConnectionError as e:
-                logger.error(f"❌ Connection error: {str(e)}")
-                logger.error(f"Verifique se Laravel está em http://127.0.0.1:8000")
-                return False
+        if response.status_code == 201:
+            result = response.json()
+            logger.info(f"✅ Webhook successful! Alert ID: {result.get('alert_id')}")
+            return True
+        else:
+            logger.warning(f"⚠️ Webhook returned {response.status_code}")
+            return False
 
     except Exception as e:
         logger.error(f"❌ Webhook error: {str(e)}")
         return False
 
 def calculate_fall_confidence(landmarks) -> tuple[bool, float]:
-    """Calcular confiança de detecção de queda"""
+    """Calcular confiança de detecção de queda - VERSÃO MAIS SENSÍVEL"""
     try:
+        # Landmarks principais
         left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
-        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
         left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
         right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+        nose = landmarks[mp_pose.PoseLandmark.NOSE]
 
-        left_diff = abs(left_shoulder.y - left_hip.y)
-        right_diff = abs(right_shoulder.y - right_hip.y)
-        avg_diff = (left_diff + right_diff) / 2
+        # Calcular diferenças verticais (Y) - quanto menor, mais horizontal está o corpo
+        left_vertical_diff = abs(left_shoulder.y - left_hip.y)
+        right_vertical_diff = abs(right_shoulder.y - right_hip.y)
+        vertical_diff = min(left_vertical_diff, right_vertical_diff)
 
-        shoulder_mid_y = (left_shoulder.y + right_shoulder.y) / 2
-        hip_mid_y = (left_hip.y + right_hip.y) / 2
-        body_vertical_diff = abs(shoulder_mid_y - hip_mid_y)
+        # Calcular diferenças horizontais (X) - corpo deitado tem ombro e quadril alinhados no eixo X
+        left_horizontal_diff = abs(left_shoulder.x - left_hip.x)
+        right_horizontal_diff = abs(right_shoulder.x - right_hip.x)
+        horizontal_diff = max(left_horizontal_diff, right_horizontal_diff)
 
-        shoulder_horizontality = abs(left_shoulder.y - right_shoulder.y)
+        # Calcular altura do nariz em relação aos quadris
+        avg_hip_y = (left_hip.y + right_hip.y) / 2
+        nose_height = avg_hip_y - nose.y  # Positivo = nariz acima dos quadris, negativo = abaixo
 
-        is_horizontal = avg_diff < 0.15
-        is_level = shoulder_horizontality < 0.08
+        fall_detected = False
+        confidence = 0.0
 
-        if is_horizontal and is_level:
-            confidence = min(100, (1 - avg_diff / 0.15) * 100)
-            return True, confidence
+        # CRITÉRIO 1: Corpo horizontal (vertical_diff pequeno)
+        # THRESHOLD AUMENTADO: 0.1 → 0.18 (80% mais sensível!)
+        if vertical_diff < 0.18:
+            conf = (1 - vertical_diff / 0.18) * 100
+            confidence = max(confidence, conf)
+            fall_detected = True
 
-        return False, 0.0
+        # CRITÉRIO 2: Cabeça muito baixa (nariz próximo ou abaixo do nível dos quadris)
+        if nose_height < 0.15:  # Nariz próximo do nível dos quadris
+            conf = max(85.0, (0.15 - nose_height) * 300)
+            confidence = max(confidence, min(100.0, conf))
+            fall_detected = True
+
+        # CRITÉRIO 3: Grande distância horizontal entre ombros e quadris (corpo esticado horizontalmente)
+        if horizontal_diff > 0.12:
+            conf = min(100, horizontal_diff * 500)
+            confidence = max(confidence, conf)
+            fall_detected = True
+
+        return fall_detected, min(100.0, confidence)
 
     except Exception as e:
         logger.error(f"Error calculating fall confidence: {str(e)}")
@@ -297,17 +358,19 @@ def process_video():
     """Thread principal de processamento de vídeo"""
     global current_session
 
-    logger.info("Video processing thread started")
+    logger.info("🎥 Video processing thread started")
+
     consecutive_fall_frames = 0
-    fall_threshold_frames = 60
+    fall_threshold_frames = 12  # Reduzido de 30 para 12 (0.4 segundos a 30fps) - MUITO MAIS RÁPIDO!
     last_webhook_time = 0
     webhook_cooldown = 30
 
     while current_session and current_session.is_running:
         try:
             success, frame = current_session.camera.read()
-            if not success:
-                logger.warning("Failed to read frame from camera")
+
+            if not success or frame is None:
+                logger.warning("Failed to read frame")
                 time.sleep(0.1)
                 continue
 
@@ -346,18 +409,14 @@ def process_video():
                             current_session.fall_detected = True
                             current_session.fall_time = time.time()
 
-                            logger.warning(
-                                f"FALL DETECTED in session {current_session.session_id} "
-                                f"with {confidence:.1f}% confidence"
-                            )
-
-                            current_session.last_snapshot = frame.copy()
+                            logger.warning(f"⚠️ FALL DETECTED! Session: {current_session.session_id}, Confidence: {confidence:.1f}%")
 
                             current_time = time.time()
                             if current_time - last_webhook_time > webhook_cooldown:
                                 threading.Thread(
                                     target=trigger_webhook,
-                                    args=(current_session.session_id, confidence, frame.copy())
+                                    args=(current_session.session_id, confidence, frame.copy()),
+                                    daemon=True
                                 ).start()
                                 last_webhook_time = current_time
 
@@ -382,7 +441,7 @@ def process_video():
 
             cv2.putText(
                 frame,
-                f"Session: {current_session.session_id} | FPS: 30",
+                f"Session: {current_session.session_id}",
                 (10, frame.shape[0] - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
@@ -394,38 +453,37 @@ def process_video():
             cv2.circle(frame, (frame.shape[1] - 30, 30), 10, status_color, -1)
 
             ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            current_session.frame_output = buffer.tobytes()
+            if ret:
+                current_session.frame_output = buffer.tobytes()
 
         except Exception as e:
             logger.error(f"Error processing frame: {str(e)}", exc_info=True)
             time.sleep(0.1)
 
-    logger.info("Video processing thread stopped")
-    if current_session:
-        with session_lock:
-            stop_current_session()
+    logger.info("🛑 Video processing thread stopped")
 
 @app.route('/health')
 def health():
     """Health check endpoint"""
     return jsonify({
-        "status": "ok",
+        "status": "healthy",
         "timestamp": time.time(),
         "active_session": current_session.session_id if current_session else None,
-        "is_monitoring": current_session is not None
+        "is_monitoring": current_session is not None and current_session.is_running
     })
 
 @app.route('/')
 def index():
     """Página inicial"""
     return jsonify({
-        "service": "FallDetector Detection Service",
+        "service": "Fall Detection Service",
         "version": "1.0.0",
         "status": "running",
         "endpoints": {
             "health": "/health",
             "status": "/status",
             "video_feed": "/video_feed",
+            "available_cameras": "/available_cameras",
             "start": "/start (POST)",
             "stop": "/stop (POST)"
         }
@@ -433,9 +491,9 @@ def index():
 
 if __name__ == '__main__':
     logger.info("=" * 60)
-    logger.info("FallDetector Detection Service Starting")
-    logger.info("Port: 8080")
-    logger.info("Laravel Webhook: " + WEBHOOK_ENDPOINT)
+    logger.info("🚀 Fall Detection Service Starting")
+    logger.info("📡 Port: 8080")
+    logger.info("🔗 Laravel Webhook: " + WEBHOOK_ENDPOINT)
     logger.info("=" * 60)
 
     app.run(

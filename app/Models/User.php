@@ -21,6 +21,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'phone',
         'password',
     ];
 
@@ -56,5 +57,21 @@ class User extends Authenticatable
     public function monitoringSessions(): HasMany
     {
         return $this->hasMany(MonitoringSession::class);
+    }
+
+    /**
+     * Get the notification settings for the user.
+     */
+    public function notificationSettings()
+    {
+        return $this->hasOne(NotificationSetting::class);
+    }
+
+    /**
+     * Get the notifications for the user.
+     */
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(Notification::class);
     }
 }

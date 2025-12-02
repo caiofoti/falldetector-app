@@ -26,7 +26,7 @@ class FallAlert extends Model
         'confidence_score' => 'float',
     ];
 
-    public function session(): BelongsTo
+    public function monitoringSession(): BelongsTo
     {
         return $this->belongsTo(MonitoringSession::class, 'monitoring_session_id');
     }

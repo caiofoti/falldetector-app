@@ -2,7 +2,7 @@ import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Head, router } from '@inertiajs/react';
-import { AlertTriangle, Camera, Activity, X, Volume2, VolumeX, Settings, Play, Square } from 'lucide-react';
+import { AlertTriangle, Camera, Activity, X, Volume2, VolumeX, Settings, Play, Square, TestTube2 } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import axios from 'axios';
@@ -136,22 +136,39 @@ export default function LiveView({ session }: LiveViewProps) {
 
     const stopMonitoring = async () => {
         try {
-            await axios.post(`/camera/${session.id}/stop`);
+            // Limpar o stream imediatamente para evitar travamento
+            if (imgRef.current) {
+                // Remove os event listeners primeiro
+                imgRef.current.onload = null;
+                imgRef.current.onerror = null;
+
+                // Limpa o src para interromper o stream
+                imgRef.current.src = '';
+                imgRef.current.srcset = '';
+            }
+
+            // Atualizar estados locais primeiro
             setIsMonitoring(false);
             setIsConnected(false);
             setSessionStatus('inactive');
             setStreamError('');
 
-            if (imgRef.current) {
-                imgRef.current.src = '';
-                imgRef.current.onload = null;
-                imgRef.current.onerror = null;
-            }
+            // Chamar o backend para parar o Python service
+            await axios.post(`/camera/${session.id}/stop`);
+
         } catch (error) {
             console.error('Error stopping monitoring:', error);
+            // Garantir que os estados sejam atualizados mesmo com erro
             setIsMonitoring(false);
             setIsConnected(false);
             setSessionStatus('inactive');
+
+            if (imgRef.current) {
+                imgRef.current.onload = null;
+                imgRef.current.onerror = null;
+                imgRef.current.src = '';
+                imgRef.current.srcset = '';
+            }
         }
     };
 
@@ -162,7 +179,7 @@ export default function LiveView({ session }: LiveViewProps) {
 
         channel
             .listen('.fall.detected', (data: FallAlert) => {
-                console.log('✅ Fall detected event received:', data);
+                console.log('Fall detected event received:', data);
                 setAlerts(prev => {
                     const newAlerts = [data, ...prev.slice(0, 19)];
                     console.log('Updated alerts:', newAlerts);
@@ -188,11 +205,11 @@ export default function LiveView({ session }: LiveViewProps) {
             });
 
         channel.subscribed(() => {
-            console.log('✅ Successfully subscribed to channel:', `monitoring-session.${session.id}`);
+            console.log('Successfully subscribed to channel:', `monitoring-session.${session.id}`);
         });
 
         channel.error((error: any) => {
-            console.error('❌ Channel error:', error);
+            console.error('Channel error:', error);
         });
 
         // Test connection
@@ -214,8 +231,24 @@ export default function LiveView({ session }: LiveViewProps) {
             if (statusCheckInterval.current) {
                 clearInterval(statusCheckInterval.current);
             }
+
+            // Limpar o stream imediatamente
+            if (imgRef.current) {
+                imgRef.current.onload = null;
+                imgRef.current.onerror = null;
+                imgRef.current.src = '';
+                imgRef.current.srcset = '';
+            }
+
+            // Parar o monitoramento ao sair da página
+            if (isMonitoring) {
+                console.log('Stopping monitoring on component unmount');
+                axios.post(`/camera/${session.id}/stop`).catch((err) => {
+                    console.error('Error stopping monitoring on unmount:', err);
+                });
+            }
         };
-    }, [session.id, soundEnabled, fetchAlerts]);
+    }, [session.id, soundEnabled, fetchAlerts, isMonitoring]);
 
     const handleStopSession = () => {
         if (confirm('Tem certeza que deseja parar e excluir esta sessão?')) {
@@ -230,6 +263,26 @@ export default function LiveView({ session }: LiveViewProps) {
             setAlerts(prev => prev.filter(a => a.id !== alertId));
         } catch (error) {
             console.error('Error acknowledging alert:', error);
+        }
+    };
+
+    const handleTestFall = async () => {
+        try {
+            setStreamError('');
+            const response = await axios.post('/api/test-fall', {
+                session_id: session.id
+            });
+
+            if (response.data.success) {
+                alert('Teste de queda enviado com sucesso!\n\n' +
+                      `Alerta criado: #${response.data.alert_id}\n` +
+                      `Broadcast enviado via WebSocket\n` +
+                      `Webhook enviado para n8n: ${response.data.webhook_url}\n\n` +
+                      'Aguarde alguns segundos para o alerta aparecer na tela.');
+            }
+        } catch (error: any) {
+            console.error('Error testing fall detection:', error);
+            setStreamError(error.response?.data?.error || 'Erro ao enviar teste de queda');
         }
     };
 
@@ -260,7 +313,7 @@ export default function LiveView({ session }: LiveViewProps) {
                                     variant={pythonStatus.fall_detected ? 'destructive' : 'outline'}
                                     className="text-xs"
                                 >
-                                    {pythonStatus.fall_detected ? '⚠️ Queda Detectada' : '✓ Monitorando'}
+                                    {pythonStatus.fall_detected ? 'Queda Detectada' : 'Monitorando'}
                                 </Badge>
                             )}
                         </div>
@@ -271,8 +324,18 @@ export default function LiveView({ session }: LiveViewProps) {
                             size="icon"
                             onClick={() => setSoundEnabled(!soundEnabled)}
                             className="shrink-0"
+                            title="Alternar som de alerta"
                         >
                             {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleTestFall}
+                            className="shrink-0"
+                            title="Testar detecção de queda (envia webhook para n8n)"
+                        >
+                            <TestTube2 className="h-4 w-4" />
                         </Button>
                         {!isMonitoring ? (
                             <Button onClick={startMonitoring} className="gap-2">
@@ -420,11 +483,17 @@ export default function LiveView({ session }: LiveViewProps) {
                                                 </Button>
                                             </div>
                                             {alert.snapshot_path && (
-                                                <img
-                                                    src={alert.snapshot_path}
-                                                    alt="Captura da queda"
-                                                    className="w-full rounded"
-                                                />
+                                                <div className="relative">
+                                                    <img
+                                                        src={alert.snapshot_path}
+                                                        alt="Captura da queda"
+                                                        className="w-full rounded"
+                                                        onError={(e) => {
+                                                            console.error('Failed to load snapshot:', alert.snapshot_path);
+                                                            e.currentTarget.style.display = 'none';
+                                                        }}
+                                                    />
+                                                </div>
                                             )}
                                         </div>
                                     ))

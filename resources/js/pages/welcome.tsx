@@ -22,7 +22,7 @@ export default function Welcome({ canRegister }: WelcomeProps) {
         <>
             <Head title="Bem-vindo" />
 
-            <div className="min-h-screen bg-gradient-to-b from-[#FBEEF0] to-white dark:from-gray-900 dark:to-gray-950">
+            <div className="min-h-screen bg-gradient-to-b from-muted to-background">
                 <header className="container mx-auto px-4 py-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -33,7 +33,7 @@ export default function Welcome({ canRegister }: WelcomeProps) {
                                 <DialogTrigger asChild>
                                     <Button
                                         variant="ghost"
-                                        className="transition-colors hover:bg-[#BAD4D0]/20"
+                                        className="transition-colors"
                                     >
                                         Sobre
                                     </Button>
@@ -125,14 +125,14 @@ export default function Welcome({ canRegister }: WelcomeProps) {
                             <Link href="/login">
                                 <Button
                                     variant="ghost"
-                                    className="transition-colors hover:bg-[#BAD4D0]/20"
+                                    className="transition-colors"
                                 >
                                     Entrar
                                 </Button>
                             </Link>
                             {canRegister && (
                                 <Link href="/register">
-                                    <Button className="transition-transform hover:scale-105">
+                                    <Button variant="default" className="transition-transform hover:scale-105">
                                         Começar
                                     </Button>
                                 </Link>
@@ -146,9 +146,9 @@ export default function Welcome({ canRegister }: WelcomeProps) {
                         <div className="grid items-center gap-12 lg:grid-cols-2">
                             <div className="order-2 space-y-8 lg:order-1">
                                 <div className="space-y-4">
-                                    <h1 className="text-4xl leading-tight font-bold tracking-tight md:text-5xl lg:text-6xl">
+                                    <h1 className="text-4xl leading-tight font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
                                         Proteja seus entes queridos com{' '}
-                                        <span className="text-[#979B80]">
+                                        <span className="text-primary">
                                             detecção inteligente
                                         </span>{' '}
                                         de quedas
@@ -166,6 +166,7 @@ export default function Welcome({ canRegister }: WelcomeProps) {
                                         <Link href="/register">
                                             <Button
                                                 size="lg"
+                                                variant="default"
                                                 className="group w-full transition-transform hover:scale-105 sm:w-auto"
                                             >
                                                 Começar Gratuitamente
@@ -177,7 +178,7 @@ export default function Welcome({ canRegister }: WelcomeProps) {
                                         <Button
                                             size="lg"
                                             variant="outline"
-                                            className="w-full transition-colors hover:bg-[#BAD4D0]/10 sm:w-auto"
+                                            className="w-full transition-colors sm:w-auto"
                                         >
                                             Acessar Conta
                                         </Button>

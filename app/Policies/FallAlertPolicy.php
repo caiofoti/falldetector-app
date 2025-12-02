@@ -12,6 +12,6 @@ class FallAlertPolicy
      */
     public function acknowledge(User $user, FallAlert $alert): bool
     {
-        return $user->id === $alert->session->user_id;
+        return $user->id === $alert->monitoringSession->user_id;
     }
 }

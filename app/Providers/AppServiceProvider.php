@@ -5,6 +5,8 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use App\Models\FallAlert;
 use App\Models\MonitoringSession;
+use App\Models\User;
+use App\Observers\UserObserver;
 use App\Policies\FallAlertPolicy;
 use App\Policies\MonitoringSessionPolicy;
 use Illuminate\Support\Facades\Gate;
@@ -26,5 +28,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Gate::policy(MonitoringSession::class, MonitoringSessionPolicy::class);
         Gate::policy(FallAlert::class, FallAlertPolicy::class);
+
+        User::observe(UserObserver::class);
     }
 }

@@ -74,7 +74,7 @@ export default function Login({ status, canResetPassword, canRegister }: LoginPr
                                 <Label htmlFor="remember">Lembrar de mim</Label>
                             </div>
 
-                            <Button type="submit" className="mt-4 w-full" tabIndex={4} disabled={processing}>
+                            <Button type="submit" variant="default" className="mt-4 w-full" tabIndex={4} disabled={processing}>
                                 {processing && <Spinner />}
                                 Entrar
                             </Button>

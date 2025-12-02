@@ -12,7 +12,7 @@ if not exist "python" (
 
 REM Copiar arquivos se necessário
 if not exist "python\fall_detection_service.py" (
-    echo ERRO: fall_detection_service.py nao encontrado!
+    echo ERRO: fall_detection_service.py nao enontrado!
     echo Por favor, copie o arquivo para a pasta python\
     pause
     exit /b 1
